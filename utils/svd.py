@@ -234,7 +234,7 @@ def hasvd(
             return svd_method(A, full_matrices=False, truncate_tol=truncate_tol)
 
         if key in svd_cache:
-            logger.debug(f"[CACHE-HIT] for key: {key}")
+            # logger.debug(f"[CACHE-HIT] for key: {key}")
             return svd_cache[key]
 
         U, s, Vh = svd_method(A, full_matrices=False, truncate_tol=truncate_tol)
@@ -264,8 +264,8 @@ def hasvd(
 # Caching
 
 
-def logical_key_policy(node: hasvd_Node):
-    """A simple caching key policy
+def simple_cache_map(node: hasvd_Node):
+    """A simple caching key rule
 
     Parameters
     ----------
@@ -275,11 +275,11 @@ def logical_key_policy(node: hasvd_Node):
     Returns
     -------
     tuple
-        Caching key tuples (tag, direction)
+        Caching key tuples (id, direction)
     """
     if node.tag is None:
         return None
-    return (node.tag, node.direction)
+    return (node.id, node.direction)
 
 
 def rank_analysis(tree: hasvd_Node, ranks):
