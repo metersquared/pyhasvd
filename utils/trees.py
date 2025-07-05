@@ -635,6 +635,9 @@ def graphviz_for_tree(nxG: nx.Graph):
     )
 
 
+# Draw graphs
+
+
 def draw_nxgraph(root: hasvd_Node, node_size=1000):
     nxG = nx.Graph()
 
@@ -706,6 +709,9 @@ def draw_nxgraph(root: hasvd_Node, node_size=1000):
     )
 
 
+# Rank plots
+
+
 def plot_rank_graph(root: hasvd_Node, node_rank_map, cmap="RdYlGn_r"):
     G = nx.DiGraph()
     color_vals = []
@@ -764,6 +770,13 @@ def plot_rank_graph(root: hasvd_Node, node_rank_map, cmap="RdYlGn_r"):
     plt.axis("off")
     plt.tight_layout()
     plt.show()
+
+
+def print_rank_graph(node, node_rank_map, indent=0):
+    rank = node_rank_map.get(node, 0)
+    print("    " * indent + f"{node.tag} (Rank: {rank})")
+    for child in node.children:
+        print_rank_graph(child, node_rank_map, indent + 1)
 
 
 # Utils counter
