@@ -4,6 +4,8 @@ from pymor.algorithms.hapod import Node
 from hasvd.utils.matrix import array_to_hankel
 import numpy as np
 
+from typing import Literal
+
 
 class hasvd_Node(Node):
     """docstring for hasvd_Node."""
@@ -13,6 +15,7 @@ class hasvd_Node(Node):
         shape: tuple[int, int] = None,
         direction=0,
         tag=None,
+        id=None,
         parent=None,
         after=None,
     ):
@@ -21,10 +24,11 @@ class hasvd_Node(Node):
         self.m = shape[0]
         self.n = shape[1]
         self.root = parent.root if parent else self
+        self.id = id
 
-    def add_child(self, direction=2, tag=None, after=None, **kwargs):
+    def add_child(self, direction=2, tag=None, id=None, after=None, **kwargs):
         return hasvd_Node(
-            direction=direction, tag=tag, parent=self, after=after, **kwargs
+            direction=direction, tag=tag, id=id, parent=self, after=after, **kwargs
         )
 
     @property
@@ -291,6 +295,7 @@ def tlbd_dist_hasvd_tree(
     num_inner_slices: int,
     outer_direction: int = 0,
     block_shape: tuple[int, int] = None,
+    recursion: Literal[None, "hankel"] = None,
 ):
     """
     Build a two-level hierarchical HASVD tree with full control over slice partitioning and directions.
@@ -335,13 +340,18 @@ def tlbd_dist_hasvd_tree(
     for outer_idx in range(num_outer_slices):
         outer_node = root.add_child(
             tag=outer_tag,
+            id=outer_tag,
             direction=(outer_direction + 1) % 2,
             shape=shape,
         )
         outer_tag += 1
         for inner_idx in range(num_inner_slices):
             inner_tag = outer_idx * num_inner_slices + inner_idx
-            outer_node.add_child(tag=inner_tag, shape=block_shape)
+            if recursion == None:
+                inner_id = inner_tag
+            elif recursion == "hankel":
+                inner_id = outer_idx + inner_idx
+            outer_node.add_child(tag=inner_tag, id=inner_id, shape=block_shape)
 
     return root
 
