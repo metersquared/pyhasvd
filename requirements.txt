@@ -9,7 +9,8 @@ diskcache==5.6.3
 executing==2.1.0
 fonttools==4.55.2
 graphviz==0.20.3
-# Editable install with no version control (hasvd==0.1) -e /home/metersquared/Nextcloud/semesters/SS2024/thesis/Master's Thesis/SVD Algorithms
+# Editable install with no version control (hasvd==0.1)
+-e /home/metersquared/Nextcloud/semesters/SS2024/thesis/Master's Thesis/SVD Algorithms
 ipykernel==6.29.5
 ipython==8.27.0
 jedi==0.19.1
