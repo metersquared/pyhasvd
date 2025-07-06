@@ -54,6 +54,28 @@ def method_of_snapshots(
     return U, np.sqrt(safe_eigenvalues), V.T
 
 
+def truncation_rank(s: np.ndarray, truncate_tol):
+    """Computes the truncation rank based on Frobenius
+
+    Parameters
+    ----------
+    s : np.ndarray
+        Singular values
+    truncate_tol : float or double
+        Maximal tolerance
+
+    Returns
+    -------
+    int
+        Rank after truncation.
+    """
+    cumulative_sum = np.sqrt(np.cumsum(np.square(s[::-1]))[::-1])
+    truncation_index = np.searchsorted(
+        cumulative_sum <= truncate_tol, True, side="left"
+    )
+    return truncation_index
+
+
 def svd_with_tol(A: np.ndarray, full_matrices=False, truncate_tol=np.finfo(float).eps):
     """
     Wrapper for np.linalg.svd with truncation based on a tolerance.
@@ -88,31 +110,6 @@ def svd_with_tol(A: np.ndarray, full_matrices=False, truncate_tol=np.finfo(float
         s = s[valid]
         Vh = Vh[valid, :]
     return U, s, Vh
-
-
-def dist_hasvd(A: np.ndarray, partitions: int, truncate=False, truncate_tol=1e-16):
-    width = int(A.shape[1] / partitions)
-    children = [A[:, i * width : (i + 1) * width] for i in range(partitions)]
-    children_svd = []
-
-    for child in children:
-        children_svd.append(
-            method_of_snapshots(
-                child, full_matrices=truncate, truncate_tol=truncate_tol
-            )
-        )
-
-    weighted_aggregated_U = np.concatenate(
-        ([child[0] @ np.diag(child[1]) for child in children_svd]), axis=1
-    )
-
-    U, E, Vh = method_of_snapshots(
-        weighted_aggregated_U, full_matrices=truncate, truncate_tol=truncate_tol
-    )
-
-    Vh = Vh @ block_diag(*[child[2] for child in children_svd])
-
-    return U, E, Vh
 
 
 import asyncio
