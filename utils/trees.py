@@ -570,7 +570,7 @@ def tlbd_hankelblockarray_ltb_map(
     return map
 
 
-# Irregular trees
+# Alternating Incremental Trees
 
 
 def alt_inc_tree(
@@ -765,6 +765,48 @@ def regular_alt_inc_general_ltb_map(
 
     dblock_lengths = [dblock_length] * dblock_num
     return alt_inc_general_ltb_map(A, dblock_lengths, outer_direction)
+
+
+def find_geometric_sequences(M: int, min_a: int = 10):
+    """Find all geometric sequences of the form a, ar, ar^2, ..., ar^(n-1) such that the sum is M.
+    The first term 'a' must be greater than or equal to min_a. Good to use for finding sequence of diagonal sizes with geometric growth for alternating incremental HASVD.
+
+    Parameters
+    ----------
+    M : int
+        The target sum of the geometric sequence.
+    min_a : int, optional
+        The minimum value for the first term 'a', by default 10
+
+    Returns
+    -------
+    List[List[int]]
+        A list of geometric sequences that sum to M.
+    """
+    solutions = []
+
+    for r in range(2, M + 1):
+        for n in range(2, 64):
+            r_power_n = r**n
+            denom = r_power_n - 1
+            numer = M * (r - 1)
+
+            if denom > numer:  # Early exit: 'a' would be zero or negative
+                break
+
+            if numer % denom != 0:
+                continue
+
+            a = numer // denom
+            if a <= min_a:
+                continue
+
+            sequence = [a * r**i for i in range(n)]
+            solutions.append(sequence)
+
+    # Sort: first by length, then by first term
+    solutions.sort(key=lambda seq: (len(seq), seq[0]))
+    return solutions
 
 
 # Graphs and trees
