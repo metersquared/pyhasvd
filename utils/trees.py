@@ -83,6 +83,10 @@ class hasvd_Node(Node):
             lines.append(line)
         return "\n".join(lines)
 
+    def validity_check(self):
+        """Check the validity of the tree."""
+        assert_shape_consistency(self)
+
 
 # One-Level Trees
 
@@ -120,6 +124,7 @@ def inc_hasvd_tree(
 
     root = hasvd_Node(
         tag="r",
+        id="r",
         direction=direction,
         shape=shape,
     )
@@ -132,6 +137,7 @@ def inc_hasvd_tree(
     for outer_idx in range(num_slices):
         leaf_node = parent_node.add_child(
             tag=leaf_tag,
+            id=leaf_tag,
             direction=2,  # leaf direction (optional, for consistency)
             shape=block_shape,
         )
@@ -145,6 +151,7 @@ def inc_hasvd_tree(
 
             parent_node = parent_node.add_child(
                 tag=outer_tag,
+                id=outer_tag,
                 direction=direction,
                 shape=shape,
             )
@@ -177,6 +184,7 @@ def dist_hasvd_tree(
     """
     root = hasvd_Node(
         tag="r",
+        id="r",
         direction=direction,
         shape=(num_slices * block_shape[0], block_shape[1]),
     )
@@ -184,6 +192,7 @@ def dist_hasvd_tree(
     for tag in range(num_slices):
         root.add_child(
             tag=tag,
+            id=tag,
             direction=2,  # leaf direction (optional, for consistency)
             shape=(block_shape[0], block_shape[1]),
         )
@@ -191,7 +200,7 @@ def dist_hasvd_tree(
     return root
 
 
-def linear_general_btl_map(A: np.ndarray, m: int, n: int, direction: int):
+def linear_general_ltb_map(A: np.ndarray, m: int, n: int, direction: int):
     """Block-to-leaf map generator connecting general matrices to two-level bidirectional trees.
 
     Parameters
@@ -233,7 +242,7 @@ def linear_general_btl_map(A: np.ndarray, m: int, n: int, direction: int):
     return map
 
 
-def linear_hankelarray_btl_map(
+def linear_hankelarray_ltb_map(
     A_array: np.ndarray, partitions, m: int, n: int, direction: int
 ):
     """Block-to-leaf map generator connecting Hankel matrices to two-level bidirectional trees.
@@ -325,6 +334,7 @@ def tlbd_dist_hasvd_tree(
     total_leaves = num_outer_slices * num_inner_slices
     root = hasvd_Node(
         tag="r",
+        id="r",
         direction=outer_direction,
         shape=(total_m, total_n),
     )
@@ -361,6 +371,7 @@ def tlbd_inc_hasvd_tree(
     num_inner_slices: int,
     outer_direction: int = 0,
     block_shape: tuple[int, int] = None,
+    recursion: Literal[None, "hankel"] = None,
 ):
     """
     Build a two-level hierarchical HASVD tree with full control over slice partitioning and directions.
@@ -392,6 +403,7 @@ def tlbd_inc_hasvd_tree(
     total_leaves = num_outer_slices * num_inner_slices
     root = hasvd_Node(
         tag="r",
+        id="r",
         direction=outer_direction,
         shape=(total_m, total_n),
     )
@@ -408,12 +420,17 @@ def tlbd_inc_hasvd_tree(
                 shape = (block_shape[0], total_n)
         outer_node = parent_node.add_child(
             tag=outer_tag,
+            id=outer_tag,
             direction=(outer_direction + 1) % 2,
             shape=shape,
         )
         outer_tag += 1
         for inner_idx in range(num_inner_slices):
-            outer_node.add_child(tag=leaf_tag, shape=block_shape)
+            if recursion == None:
+                inner_id = leaf_tag
+            elif recursion == "hankel":
+                inner_id = inner_idx + outer_idx
+            outer_node.add_child(tag=leaf_tag, id=inner_id, shape=block_shape)
             leaf_tag += 1
         if outer_idx < num_outer_slices - 2:
             match outer_direction:
@@ -423,6 +440,7 @@ def tlbd_inc_hasvd_tree(
                     shape = (total_m - (1 + outer_idx) * block_shape[0], total_n)
             merge_node = parent_node.add_child(
                 tag=outer_tag,
+                id=outer_tag,
                 direction=outer_direction,
                 shape=shape,
             )
@@ -431,7 +449,7 @@ def tlbd_inc_hasvd_tree(
     return root
 
 
-def tlbd_general_btl_map(
+def tlbd_general_ltb_map(
     A: np.ndarray, M: int, N: int, m: int, n: int, outer_direction: int
 ):
     """Block-to-leaf map generator connecting general matrices to two-level bidirectional trees.
@@ -477,7 +495,7 @@ def tlbd_general_btl_map(
     return map
 
 
-def tlbd_hankelarray_btl_map(
+def tlbd_hankelarray_ltb_map(
     A_array: np.ndarray, M: int, N: int, m: int, n: int, outer_direction: int
 ):
     """Block-to-leaf map connecting Hankel matrices to two-linear bidirectional trees.
@@ -515,6 +533,238 @@ def tlbd_hankelarray_btl_map(
         )
 
     return map
+
+
+def tlbd_hankelblockarray_ltb_map(
+    block_array: np.ndarray, M: int, N: int, outer_direction: int, transpose=False
+):
+    """Block-to-leaf map connecting Hankel matrices to two-linear bidirectional trees.
+
+    Parameters
+    ----------
+    A_array : np.ndarray
+        Hankel block sequence
+    M : int
+        Number of row blocks
+    N : int
+        Number of column blocks
+    m : int
+        Row size of block
+    n : int
+        Column size of block
+    outer_direction : int
+        Outer top-level direction of aggregation
+    """
+
+    def map(node: hasvd_Node):
+
+        if outer_direction == 0:
+            row_pos = node.tag % M
+            col_pos = int(node.tag // M)
+        else:
+            row_pos = int((node.tag // N))
+            col_pos = node.tag % N
+
+        return block_array[row_pos + col_pos]
+
+    return map
+
+
+# Irregular trees
+
+
+def alt_inc_tree(
+    dblock_lengths: list[int],
+    outer_direction: int,
+    recursion: Literal[None, "hankel"] = None,
+):
+
+    diagonal_num = len(dblock_lengths)
+    total_m = sum(dblock_lengths)
+
+    main_rect_idx = 0
+    sub_rect_idx = diagonal_num - 1
+    diagonal_idx = (diagonal_num - 1) * 2
+    outer_idx = diagonal_num + (diagonal_num - 1) * 2
+
+    tree = hasvd_Node(
+        tag="r", id="r", direction=outer_direction, shape=(total_m, total_m)
+    )
+
+    parent = tree
+
+    for i in range(0, diagonal_num - 1):
+        d = dblock_lengths[i]
+
+        if outer_direction == 0:
+            skinny_shape = (parent.m, d)
+            rect_shape = (skinny_shape[0] - d, d)
+            fat_shape = (skinny_shape[0], parent.n - d)
+        elif outer_direction == 1:
+            skinny_shape = (d, parent.n)
+            rect_shape = (d, skinny_shape[1] - d)
+            fat_shape = (parent.m - d, skinny_shape[1])
+
+        skinny_part = parent.add_child(
+            tag=outer_idx,
+            id=outer_idx,
+            direction=(outer_direction + 1) % 2,
+            shape=skinny_shape,
+        )
+        outer_idx += 1
+
+        skinny_part.add_child(tag=diagonal_idx, id=diagonal_idx, shape=(d, d))
+        diagonal_idx += 1
+
+        skinny_part.add_child(tag=main_rect_idx, id=main_rect_idx, shape=rect_shape)
+        main_rect_idx += 1
+
+        fat_part = parent.add_child(
+            tag=outer_idx,
+            id=outer_idx,
+            direction=(outer_direction + 1) % 2,
+            shape=fat_shape,
+        )
+        outer_idx += 1
+
+        if recursion == None:
+            idx = sub_rect_idx
+        elif recursion == "hankel":
+            idx = main_rect_idx
+
+        fat_part.add_child(tag=sub_rect_idx, id=idx, shape=rect_shape[::-1])
+        sub_rect_idx += 1
+
+        if i == diagonal_num - 2:
+            fat_part.add_child(
+                tag=diagonal_idx,
+                id=diagonal_idx,
+                shape=(dblock_lengths[i + 1], dblock_lengths[i + 1]),
+            )
+        else:
+            parent = fat_part.add_child(
+                tag=outer_idx,
+                id=outer_idx,
+                direction=outer_direction,
+                shape=(parent.m - d, parent.n - d),
+            )
+            outer_idx += 1
+
+    return tree
+
+
+def regular_alt_inc_tree(
+    dblock_length: int,
+    matrix_length: int,
+    outer_direction: int,
+    recursion: Literal[None, "hankel"] = None,
+):
+
+    assert (
+        matrix_length % dblock_length == 0
+    ), "Number of blocks and matrix do not coincide!"
+
+    dblock_num = int(matrix_length / dblock_length)
+    dblock_lengths = [dblock_length] * dblock_num
+
+    print(
+        f"Generated regular alternating tree with {dblock_num} square diagonal blocks..."
+    )
+
+    return alt_inc_tree(dblock_lengths, outer_direction, recursion=recursion)
+
+
+def alt_inc_general_ltb_map(
+    A: np.ndarray, dblock_lengths: list[int], outer_direction: int
+):
+
+    diagonal_num = len(dblock_lengths)
+
+    total_length = sum(dblock_lengths)
+
+    assert A.shape == (
+        total_length,
+        total_length,
+    ), f"Shape mismatch: {A.shape} != {(total_length,total_length)}"
+
+    def map(node: hasvd_Node):
+
+        if node.tag < diagonal_num - 1:
+
+            block_type = 0  # identify as main rectangle
+            posid = node.tag
+
+        elif node.tag < (diagonal_num - 1) * 2:
+
+            block_type = 1  # identify as sub rectangle
+            posid = node.tag - diagonal_num + 1
+
+        elif node.tag < (diagonal_num - 1) * 2 + diagonal_num:
+
+            posid = node.tag - (diagonal_num - 1) * 2
+
+            min_pos = sum(dblock_lengths[:posid])
+            max_pos = sum(dblock_lengths[: posid + 1])
+
+            return A[min_pos:max_pos, min_pos:max_pos]
+        else:
+            raise "Node is not leaf!"
+
+        if outer_direction == 0:
+
+            if block_type == 0:
+
+                row_pos = sum(dblock_lengths[: posid + 1])
+                col_pos = sum(dblock_lengths[:posid])
+
+                n = dblock_lengths[posid]
+
+                return A[row_pos:, col_pos : col_pos + n]
+
+            elif block_type == 1:
+
+                row_pos = sum(dblock_lengths[:posid])
+                col_pos = sum(dblock_lengths[: posid + 1])
+
+                m = dblock_lengths[posid]
+
+                return A[row_pos : row_pos + m, col_pos:]
+
+        elif outer_direction == 1:
+
+            if block_type == 0:
+
+                row_pos = sum(dblock_lengths[:posid])
+                col_pos = sum(dblock_lengths[: posid + 1])
+
+                m = dblock_lengths[posid]
+
+                return A[row_pos : row_pos + m, col_pos:]
+
+            elif block_type == 1:
+
+                row_pos = sum(dblock_lengths[: posid + 1])
+                col_pos = sum(dblock_lengths[:posid])
+
+                n = dblock_lengths[posid]
+
+                return A[row_pos:, col_pos : col_pos + n]
+
+    return map
+
+
+def regular_alt_inc_general_ltb_map(
+    A: np.ndarray, dblock_length: int, outer_direction: int
+):
+    assert A.shape[0] == A.shape[1], "Matrix not square"
+    assert (
+        A.shape[0] % dblock_length == 0
+    ), "Number of blocks and matrix do not coincide!"
+
+    dblock_num = int(A.shape[0] / dblock_length)
+
+    dblock_lengths = [dblock_length] * dblock_num
+    return alt_inc_general_ltb_map(A, dblock_lengths, outer_direction)
 
 
 # Graphs and trees
@@ -681,7 +931,7 @@ def draw_nxgraph(root: hasvd_Node, node_size=1000):
     pos = nx.nx_agraph.graphviz_layout(
         nxG,
         prog="dot",
-        args=f"-Groot={root_node}",
+        root=root_node.id,
     )
 
     # Draw the graph
@@ -696,14 +946,14 @@ def draw_nxgraph(root: hasvd_Node, node_size=1000):
     nx.draw_networkx_labels(
         nxG,
         pos,
-        {n: n for n in columnNodes + rowNodes if n in pos},
+        {n: n.tag for n in columnNodes + rowNodes if n in pos},
         font_size=24,
         font_color="white",
     )
     nx.draw_networkx_labels(
         nxG,
         pos,
-        {n: n for n in leafNodes if n in pos},
+        {n: n.tag for n in leafNodes if n in pos},
         font_size=24,
         font_color="black",
     )

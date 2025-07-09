@@ -5,6 +5,10 @@ from typing import Literal
 # Matrix generators
 
 
+def mersenne_twister(seed):
+    return np.random.Generator(np.random.MT19937(seed))
+
+
 def random_matrix(
     m: int,
     n: int,
@@ -98,6 +102,53 @@ def fid_signal_sequence(rank, length, rng: np.random.Generator):
         x[i] = np.dot(coeffs, np.exp(-tau * t))
 
     return x
+
+
+# Conversions
+
+
+def block_array_to_block_hankel(
+    block_array: np.ndarray,
+    block_grid: tuple[int, int],
+    transpose=False,
+) -> np.ndarray:
+    """
+    Construct a block Hankel matrix from a sequence of 2D blocks.
+
+    Parameters:
+    -----------
+    block_array : np.ndarray
+        Array of shape (K, p, q), where K = M + N - 1. Each element is a 2D block.
+    block_grid : tuple[int, int]
+        Grid shape of block matrix: (M, N).
+
+    Returns:
+    --------
+    block_hankel_matrix : np.ndarray
+        A 2D matrix of shape (M * p, N * q), whose blocks follow a Hankel pattern.
+    """
+    M, N = block_grid
+    if transpose:
+        K, q, p = block_array.shape
+    else:
+        K, p, q = block_array.shape
+    assert (
+        K == M + N - 1
+    ), f"Expected block_array of shape ({M + N - 1}, p, q), got {block_array.shape}"
+
+    # Initialize full matrix
+
+    full_matrix = np.zeros((M * p, N * q))
+
+    for i in range(M):
+        for j in range(N):
+            k = i + j  # Hankel index
+            if transpose:
+                full_matrix[i * p : (i + 1) * p, j * q : (j + 1) * q] = block_array[k].T
+            else:
+                full_matrix[i * p : (i + 1) * p, j * q : (j + 1) * q] = block_array[k]
+
+    return full_matrix
 
 
 def array_to_hankel(

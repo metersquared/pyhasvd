@@ -1,13 +1,12 @@
 import numpy as np
 import scipy.linalg as scla
 from hasvd.utils.trees import hasvd_Node
+from typing import Literal
 
 # SVD
 
 
-def method_of_snapshots(
-    A: np.ndarray, full_matrices=False, truncate_tol=np.finfo(float).eps
-):
+def method_of_snapshots(A: np.ndarray, full_matrices=False, truncate_tol=None):
     """Method of snapshots method to compute SVD
 
     Parameters
@@ -32,17 +31,10 @@ def method_of_snapshots(
     E = E[sorted_indices]
     V = V[:, sorted_indices]
 
-    # Determine truncation index based on the sum of smallest eigenvalues
-    cumulative_sum = np.sqrt(
-        np.cumsum(np.clip(E, a_min=0, a_max=None)[::-1])[::-1]
-    )  # Reverse cumulative sum
-    truncation_index = np.searchsorted(
-        cumulative_sum <= truncate_tol, True, side="left"
-    )
-
     # Truncate small eigenvalues
-    if not full_matrices:
-        valid_indices = np.arange(len(E)) < truncation_index
+    if (not full_matrices) and (truncate_tol is not None):
+        r = truncation_rank(E, truncate_tol=truncate_tol, s_type="eig")
+        valid_indices = np.arange(len(E)) < r
         V = V[:, valid_indices]
         E = E[valid_indices]
 
@@ -54,29 +46,7 @@ def method_of_snapshots(
     return U, np.sqrt(safe_eigenvalues), V.T
 
 
-def truncation_rank(s: np.ndarray, truncate_tol):
-    """Computes the truncation rank based on Frobenius
-
-    Parameters
-    ----------
-    s : np.ndarray
-        Singular values
-    truncate_tol : float or double
-        Maximal tolerance
-
-    Returns
-    -------
-    int
-        Rank after truncation.
-    """
-    cumulative_sum = np.sqrt(np.cumsum(np.square(s[::-1]))[::-1])
-    truncation_index = np.searchsorted(
-        cumulative_sum <= truncate_tol, True, side="left"
-    )
-    return truncation_index
-
-
-def svd_with_tol(A: np.ndarray, full_matrices=False, truncate_tol=np.finfo(float).eps):
+def svd_with_tol(A: np.ndarray, full_matrices=False, truncate_tol=None):
     """
     Wrapper for np.linalg.svd with truncation based on a tolerance.
 
@@ -99,16 +69,52 @@ def svd_with_tol(A: np.ndarray, full_matrices=False, truncate_tol=np.finfo(float
         Right singular vectors (transposed).
     """
     U, s, Vh = np.linalg.svd(A, full_matrices=full_matrices)
-    cumulative_sum = np.sqrt(np.cumsum(np.square(s[::-1]))[::-1])
-    truncation_index = np.searchsorted(
-        cumulative_sum <= truncate_tol, True, side="left"
-    )
 
-    if not full_matrices:
-        valid = np.arange(len(s)) < truncation_index
-        U = U[:, valid]
-        s = s[valid]
-        Vh = Vh[valid, :]
+    if (not full_matrices) and (truncate_tol is not None):
+        r = truncation_rank(s, truncate_tol)
+        U, s, Vh = truncate_svd(U, s, Vh, r)
+    return U, s, Vh
+
+
+def truncation_rank(
+    s: np.ndarray, truncate_tol, s_type: Literal["sing", "eig"] = "sing"
+):
+    """Computes the truncation rank based on Frobenius norm.
+
+    Parameters
+    ----------
+    s : np.ndarray
+        Singular values
+    truncate_tol : float or double
+        Maximal tolerance
+
+    Returns
+    -------
+    int
+        Rank after truncation.
+    """
+    if s_type == "sing":
+        cumulative_sum = np.sqrt(np.cumsum(np.square(s[::-1]))[::-1])
+        truncation_index = np.searchsorted(
+            cumulative_sum <= truncate_tol, True, side="left"
+        )
+        return truncation_index
+    elif s_type == "eig":
+        # Determine truncation index based on the sum of smallest eigenvalues
+        cumulative_sum = np.sqrt(
+            np.cumsum(np.clip(s, a_min=0, a_max=None)[::-1])[::-1]
+        )  # Reverse cumulative sum
+        truncation_index = np.searchsorted(
+            cumulative_sum <= truncate_tol, True, side="left"
+        )
+        return truncation_index
+
+
+def truncate_svd(U: np.ndarray, s: np.ndarray, Vh: np.ndarray, r: int):
+    valid = np.arange(len(s)) < r
+    U = U[:, valid]
+    s = s[valid]
+    Vh = Vh[valid, :]
     return U, s, Vh
 
 
@@ -131,12 +137,17 @@ def hasvd(
     eval_snapshots_in_executor=False,
     track_ranks=False,
     cache_map=None,
+    track_svd=False,
 ):
     """Hierarchical Approximate SVD with optional rank tracking
 
     If track_ranks is True, returns a tuple (U, svals, Vh, node_rank_map),
     where node_rank_map maps each node tag to a dict of its children's ranks.
     """
+    if track_svd:
+        assert (
+            cache_map is not None
+        ), "Cannot track SVD with SVD Cache. Use a cache map."
     logger = logging.getLogger("hierarchical_hasvd")
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
@@ -227,15 +238,20 @@ def hasvd(
     svd_cache = {}
 
     def try_cached_svd(key, A, truncate_tol):
-        if cache_map is None:
+        if cache_map is None or key is None:
             return svd_method(A, full_matrices=False, truncate_tol=truncate_tol)
 
         if key in svd_cache:
             # logger.debug(f"[CACHE-HIT] for key: {key}")
-            return svd_cache[key]
+            U, s, Vh = svd_cache[key]
+            r = truncation_rank(s, truncate_tol=truncate_tol)
+            U, s, Vh = truncate_svd(U, s, Vh, r)
+            return U, s, Vh
 
-        U, s, Vh = svd_method(A, full_matrices=False, truncate_tol=truncate_tol)
+        U, s, Vh = svd_method(A, full_matrices=False, truncate_tol=None)
         svd_cache[key] = (U, s, Vh)
+        r = truncation_rank(s, truncate_tol=truncate_tol)
+        U, s, Vh = truncate_svd(U, s, Vh, r)
         return U, s, Vh
 
     # executor setup
@@ -254,6 +270,9 @@ def hasvd(
     hasvd_thread = Thread(target=spawn_rng(main))
     hasvd_thread.start()
     hasvd_thread.join()
+
+    if track_svd:
+        result = result, svd_cache
 
     return result
 
