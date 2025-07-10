@@ -8,7 +8,7 @@ import time as tic
 
 
 rng = np.random.Generator(np.random.MT19937(42))
-trials = 3
+trials = 10
 direction = 1
 set_rank = 20
 cond_num = 1e3
@@ -60,11 +60,14 @@ def bench(tol, omega, partitions, total_m, total_n):
         rank_tight[i] = [None] * trials
         time[i] = [None] * trials
 
+    A = matrix.random_matrix(m * M, n * N, set_rank, rng, cond_num)
+    
     for i in range(trials):
-        A = matrix.random_matrix(m * M, n * N, set_rank, rng, cond_num)
-        start = tic.time()
-        U, S, Vt = svd.svd_with_tol(A, truncate_tol=tol)
-        time_lapack[i] = tic.time() - start
+        
+        rtol=tol*np.linalg.norm(A)
+        start = tic.perf_counter()
+        U, S, Vt = svd.svd_with_tol(A, truncate_tol=rtol)
+        time_lapack[i] = tic.perf_counter() - start
         err_lapack[i] = np.linalg.norm(A - U @ np.diag(S) @ Vt)
         rank[i] = len(S)
 
@@ -72,23 +75,23 @@ def bench(tol, omega, partitions, total_m, total_n):
             branch_count = trees.branch_node_count(tree)
 
             def nodal_error(node):
-                return errors.tight_error(node, tol, omega, branch_count)
+                return errors.tight_error(node, rtol, omega, branch_count)
 
             if idx < 2:
 
-                leaf_to_block_map = trees.linear_general_btl_map(
+                leaf_to_block_map = trees.linear_general_ltb_map(
                     A, block_m, block_n, direction
                 )
 
             else:
 
-                leaf_to_block_map = trees.tlbd_general_btl_map(
+                leaf_to_block_map = trees.tlbd_general_ltb_map(
                     A, M, N, block_m, block_n, direction
                 )
 
-            start = tic.time()
+            start = tic.perf_counter()
             U, S, Vt = svd.hasvd(tree, leaf_to_block_map, local_eps=nodal_error)
-            time[idx][i] = tic.time() - start
+            time[idx][i] = tic.perf_counter() - start
             err_tight[idx][i] = np.linalg.norm(A - U @ np.diag(S) @ Vt)
             rank_tight[idx][i] = len(S)
 
@@ -104,8 +107,8 @@ def bench(tol, omega, partitions, total_m, total_n):
 
 
 if __name__ == "__main__":
-    sizes = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000, 10000]
-    partitions = [10]
+    sizes = [8000]
+    partitions = [10,20,40,80,100,200,400,800,1000,2000]
     eps = [1e-5, 1e-10]
     omegas = [0.1, 0.9]
 
@@ -180,6 +183,6 @@ if __name__ == "__main__":
             time[3],
         ]
 
-        df.to_csv("general_time_error_data_bench_2.csv", index=False)
+        df.to_csv("general_time_error_partitions_bench.csv", index=False)
 
 # %%

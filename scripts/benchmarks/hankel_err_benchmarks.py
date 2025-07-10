@@ -5,16 +5,21 @@ import hasvd.utils.svd as svd
 import numpy as np
 import numpy.linalg as la
 
-M = 100
-N = 100
+M = 20
+N = 20
 m = 100
 n = 100
 
-rng = np.random.Generator(np.random.MT19937(42))
-set_rank = 20
+seed=42
+rng = np.random.Generator(np.random.MT19937(seed))
+set_rank = 400
 direction = 0
-trials = 10
+trials = 1
 
+A_array = matrix.fid_signal_sequence(set_rank, M * m + N * n - 1, rng)
+A = matrix.array_to_hankel(A_array, (M * m, N * n))
+
+normA=np.linalg.norm(A)
 
 def bench(tol, omega):
 
@@ -23,35 +28,36 @@ def bench(tol, omega):
         trees.inc_hasvd_tree(N, direction, (M * m, n)),
         trees.tlbd_dist_hasvd_tree(N, M, 0, (m, n)),
         trees.tlbd_inc_hasvd_tree(N, M, 0, (m, n)),
+        trees.regular_alt_inc_tree(m,M*m,direction)
     ]
 
-    nodal_errors = [
-        lambda node: errors.tight_error(node, tol, omega, trees.branch_node_count(tree))
-        for tree in tree_arr
-    ]
+    nodal_errors = []
+    for tree in tree_arr:
+        count = trees.branch_node_count(tree)
+        nodal_errors.append(
+            lambda node, count=count: errors.tight_error(node, tol, omega, count)
+        )
 
     err = np.zeros(len(tree_arr))
     rk = np.zeros(len(tree_arr))
-    rank_true = 0
     error = 0
     rank = 0
+    
+    rank_true = la.matrix_rank(A)
 
     for _ in range(trials):
-
-        A_array = matrix.lrf_sequence(set_rank, M * m + N * n - 1, rng)
-        A = matrix.array_to_hankel(A_array, (M * m, N * n))
-        rank_true += la.matrix_rank(A)
 
         # Standard
         U, E, Vh = svd.svd_with_tol(A, full_matrices=False, truncate_tol=tol)
         error += la.norm(A - U @ np.diag(E) @ Vh)
-        rank += len(E)
+        rank += la.matrix_rank(U @ np.diag(E) @ Vh)
 
         ltb_map = [
-            trees.linear_hankelarray_btl_map(A_array, N, M * m, n, direction),
-            trees.linear_hankelarray_btl_map(A_array, N, M * m, n, direction),
-            trees.tlbd_hankelarray_btl_map(A_array, M, N, m, n, direction),
-            trees.tlbd_hankelarray_btl_map(A_array, M, N, m, n, direction),
+            trees.linear_hankelarray_ltb_map(A_array, N, M * m, n, direction),
+            trees.linear_hankelarray_ltb_map(A_array, N, M * m, n, direction),
+            trees.tlbd_hankelarray_ltb_map(A_array, M, N, m, n, direction),
+            trees.tlbd_hankelarray_ltb_map(A_array, M, N, m, n, direction),
+            trees.regular_alt_inc_general_ltb_map(A,m,direction )
         ]
 
         # HASVD
@@ -62,7 +68,7 @@ def bench(tol, omega):
                 nodal_errors[idx],
             )
             err[idx] += la.norm(A - U @ np.diag(E) @ Vh)
-            rk[idx] += len(E)
+            rk[idx] += la.matrix_rank(U @ np.diag(E) @ Vh)
 
     rank_true /= trials
     error /= trials
@@ -76,9 +82,9 @@ def bench(tol, omega):
 
 
 if __name__ == "__main__":
-    eps = [1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10]
-    omega = [0.1, 0.9]
-    methods_num = 4
+    eps = [1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,1e-9,1e-10,1e-11,1e-12,1e-13,1e-14,1e-15]
+    omega = [0.1,0.5, 0.9]
+    methods_num = 5
 
     combinations = [(eps_val, omega_val) for eps_val in eps for omega_val in omega]
 
@@ -91,6 +97,8 @@ if __name__ == "__main__":
             "omega",
         ],
     )
+    
+    df["eps_norm"]=np.nan
 
     df["r_true"] = np.nan
     df["r"] = np.nan
@@ -98,12 +106,15 @@ if __name__ == "__main__":
 
     for i in range(methods_num):
         df["r" + str(i)] = np.nan
+    
+    for i in range(methods_num):
         df["err" + str(i)] = np.nan
 
     for i, (eps_val, omega_val) in enumerate(combinations):
         print(f"Running benchmark {i + 1}/{len(combinations)}")
+         
         (rank_true, rank, error, rk, err) = bench(eps_val, omega_val)
+        
+        df.loc[i] = [eps_val, omega_val, eps_val*normA, rank_true, rank, error, *rk, *err]
 
-        df.loc[i] = [eps_val, omega_val, rank_true, rank, error, *rk, *err]
-
-        df.to_csv("hankel_error_rank_data_bench.csv", index=False)
+        df.to_csv(f"hankel_error_rank_data_bench_fid_seed{seed}.csv", index=False)

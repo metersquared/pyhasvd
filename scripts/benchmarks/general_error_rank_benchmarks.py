@@ -26,7 +26,7 @@ else:
     block_m = m
 
 tree_list = [
-    # trees.dist_hasvd_tree(partition, direction, (block_m, block_n)),
+    trees.dist_hasvd_tree(partition, direction, (block_m, block_n)),
     trees.inc_hasvd_tree(partition, direction, (block_m, block_n)),
 ]
 
@@ -35,6 +35,7 @@ def bench(tol, omega):
 
     err_lapack = [None] * trials
     rank = [None] * trials
+    rtols = [None] * trials
 
     err_naive = [None] * len(tree_list)
     err_tight = [None] * len(tree_list)
@@ -47,9 +48,11 @@ def bench(tol, omega):
         rank_naive[i] = [None] * trials
         rank_tight[i] = [None] * trials
 
+
     for i in range(trials):
-        A = matrix.random_matrix(m * M, n * N, set_rank, rng, 1e3)
-        U, S, Vt = svd.svd_with_tol(A, truncate_tol=tol)
+        A = matrix.random_matrix(m * M, n * N, set_rank, rng)
+        rtols[i]=tol*np.linalg.norm(A)
+        U, S, Vt = svd.svd_with_tol(A, truncate_tol=rtols[i])
         err_lapack[i] = np.linalg.norm(A - U @ np.diag(S) @ Vt)
         rank[i] = len(S)
 
@@ -63,17 +66,17 @@ def bench(tol, omega):
 
             non_leaf_count = trees.non_leaf_count(tree)
             branch_count = trees.branch_node_count(tree)
-            """
+            
             def nodal_error(node):
-                return errors.naive_error(node, tol, omega, non_leaf_count)
+                return errors.naive_error(node, rtols[i], omega, non_leaf_count)
 
             U, S, Vt = svd.hasvd(tree, node_to_block_map, local_eps=nodal_error)
             err_naive[idx][i] = np.linalg.norm(A - U @ np.diag(S) @ Vt)
             rank_naive[idx][i] = len(S)
-            """
+            
 
             def nodal_error(node):
-                return errors.tight_error(node, tol, omega, branch_count)
+                return errors.tight_error(node, rtols[i], omega, branch_count)
 
             U, S, Vt = svd.hasvd(tree, node_to_block_map, local_eps=nodal_error)
             err_tight[idx][i] = np.linalg.norm(A - U @ np.diag(S) @ Vt)
@@ -81,18 +84,19 @@ def bench(tol, omega):
 
     err_lapack = np.mean(err_lapack)
     rank = np.mean(rank)
+    rtols =np.mean(rtols)
     for i in range(len(tree_list)):
         err_naive[i] = np.mean(err_naive[i])
         err_tight[i] = np.mean(err_tight[i])
         rank_naive[i] = np.mean(rank_naive[i])
         rank_tight[i] = np.mean(rank_tight[i])
 
-    return err_lapack, rank, err_naive, rank_naive, err_tight, rank_tight
+    return rtols,err_lapack, rank, err_naive, rank_naive, err_tight, rank_tight
 
 
 if __name__ == "__main__":
-    eps = [5e-2, 4e-2, 3e-2, 2e-2, 1e-2, 9e-3, 8e-3, 7e-3, 6e-3, 5e-3]
-    omegas = [0.1, 0.25, 0.5, 0.75, 0.9]
+    eps = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10,1e-11,1e-12,1e-13,1e-14,1e-15]
+    omegas = [0.1, 0.5, 0.9]
 
     combinations = [(eps_val, omega_val) for eps_val in eps for omega_val in omegas]
 
@@ -105,35 +109,36 @@ if __name__ == "__main__":
             "omega",
         ],
     )
-
+    df["eps_norm"] =np.nan
     df["err"] = np.nan
     df["rk"] = np.nan
-    # df["err_naive_0"] = np.nan
-    # df["rk_naive_0"] = np.nan
-    # df["err_tight_0"] = np.nan
-    # df["rk_tight_0"] = np.nan
+    df["err_naive_0"] = np.nan
+    df["rk_naive_0"] = np.nan
+    df["err_tight_0"] = np.nan
+    df["rk_tight_0"] = np.nan
 
-    # df["err_naive_1"] = np.nan
-    # df["rk_naive_1"] = np.nan
+    df["err_naive_1"] = np.nan
+    df["rk_naive_1"] = np.nan
     df["err_tight_1"] = np.nan
     df["rk_tight_1"] = np.nan
 
     for i, (eps_val, omega_val) in enumerate(combinations):
         print(f"Running benchmark {i + 1}/{len(combinations)}")
-        (err_lapack, rank, _, _, err_tight, rank_tight) = bench(eps_val, omega_val)
+        (rtol,err_lapack, rank, err_naive, rank_naive, err_tight, rank_tight) = bench(eps_val, omega_val)
         df.loc[i] = [
             eps_val,
             omega_val,
+            rtol,
             err_lapack,
             rank,
-            # err_naive[0],
-            # rank_naive[0],
+            err_naive[0],
+            rank_naive[0],
             err_tight[0],
             rank_tight[0],
-            # err_naive[1],
-            # rank_naive[1],
-            # err_tight[1],
-            # rank_tight[1],
+            err_naive[1],
+            rank_naive[1],
+            err_tight[1],
+            rank_tight[1],
         ]
 
-        df.to_csv("general_error_rank_data_bench_2.csv", index=False)
+        df.to_csv("general_error_rank_bench.csv", index=False)
