@@ -237,22 +237,48 @@ def hasvd(
 
     svd_cache = {}
 
-    def try_cached_svd(key, A, truncate_tol):
-        if cache_map is None or key is None:
+    # Set logger level once outside or at the start of your code:
+    def try_cached_svd(key_info, A, truncate_tol):
+        # If cache not enabled
+        if cache_map is None or key_info is None:
             return svd_method(A, full_matrices=False, truncate_tol=truncate_tol)
 
-        if key in svd_cache:
-            # logger.debug(f"[CACHE-HIT] for key: {key}")
+        # Use old simple key
+        if not isinstance(key_info, dict):
+            key = key_info
+            if key in svd_cache:
+                U, s, Vh = svd_cache[key]
+                r = truncation_rank(s, truncate_tol=truncate_tol)
+                return truncate_svd(U, s, Vh, r)
+            else:
+                U, s, Vh = svd_method(A, full_matrices=False, truncate_tol=None)
+                svd_cache[key] = (U, s, Vh)
+                r = truncation_rank(s, truncate_tol=truncate_tol)
+                return truncate_svd(U, s, Vh, r)
+
+        # Use transpose-aware cache
+        key = key_info["key"]
+        transpose_key = key_info["transpose_key"]
+
+        if transpose_key in svd_cache:
+            # Transpose match found
+            V, s, Uh = svd_cache[transpose_key]
+            U = Uh.T
+            Vh = V.T
+
+            r = truncation_rank(s, truncate_tol=truncate_tol)
+            return truncate_svd(U, s, Vh, r)
+
+        elif key in svd_cache:
             U, s, Vh = svd_cache[key]
             r = truncation_rank(s, truncate_tol=truncate_tol)
-            U, s, Vh = truncate_svd(U, s, Vh, r)
-            return U, s, Vh
+            return truncate_svd(U, s, Vh, r)
 
+        # No cache hit
         U, s, Vh = svd_method(A, full_matrices=False, truncate_tol=None)
         svd_cache[key] = (U, s, Vh)
         r = truncation_rank(s, truncate_tol=truncate_tol)
-        U, s, Vh = truncate_svd(U, s, Vh, r)
-        return U, s, Vh
+        return truncate_svd(U, s, Vh, r)
 
     # executor setup
     if executor is not None:
@@ -281,21 +307,19 @@ def hasvd(
 
 
 def simple_cache_map(node: hasvd_Node):
-    """A simple caching key rule
-
-    Parameters
-    ----------
-    node : hasvd_Node
-        Node of given tree
-
-    Returns
-    -------
-    tuple
-        Caching key tuples (id, direction)
-    """
+    """Simple cache key using node ID and shape"""
     if node.tag is None:
         return None
-    return (node.id, node.direction)
+    return (node.id, node.m, node.n)
+
+
+def symmetric_cache_map(node: hasvd_Node):
+    """Transpose-aware cache map using shape, not direction"""
+    if node.tag is None:
+        return None
+    key = (node.id, node.m, node.n)
+    transpose_key = (node.id, node.n, node.m)
+    return {"key": key, "transpose_key": transpose_key}
 
 
 def rank_analysis(tree: hasvd_Node, ranks):
