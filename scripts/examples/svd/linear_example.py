@@ -79,8 +79,8 @@ print(tree)  # Print to check shape of tree if necessary.
 
 # %%
 from hasvd.utils.trees import (
-    linear_general_btl_map,
-    linear_hankelarray_btl_map,
+    linear_general_ltb_map,
+    linear_hankelarray_ltb_map,
     branch_node_count,
     non_leaf_count,
 )
@@ -89,11 +89,11 @@ from hasvd.utils.errors import tight_error, naive_error
 from hasvd.utils.svd import hasvd
 
 if matrix_type == 0:
-    btl_map = linear_general_btl_map(
+    btl_map = linear_general_ltb_map(
         A, block_shape[0], block_shape[1], direction
     )  # Makes a map to block of a node
 elif matrix_type == 1:
-    btl_map = linear_hankelarray_btl_map(
+    btl_map = linear_hankelarray_ltb_map(
         A_array, partitions, block_shape[0], block_shape[1], direction
     )
 

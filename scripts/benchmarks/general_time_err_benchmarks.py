@@ -76,13 +76,13 @@ def bench(tol, omega, partitions, total_m, total_n):
 
             if idx < 2:
 
-                leaf_to_block_map = trees.linear_general_btl_map(
+                leaf_to_block_map = trees.linear_general_ltb_map(
                     A, block_m, block_n, direction
                 )
 
             else:
 
-                leaf_to_block_map = trees.tlbd_general_btl_map(
+                leaf_to_block_map = trees.tlbd_general_ltb_map(
                     A, M, N, block_m, block_n, direction
                 )
 
