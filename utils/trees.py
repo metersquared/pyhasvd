@@ -617,7 +617,6 @@ def alt_inc_tree(
         diagonal_idx += 1
 
         skinny_part.add_child(tag=main_rect_idx, id=main_rect_idx, shape=rect_shape)
-        main_rect_idx += 1
 
         fat_part = parent.add_child(
             tag=outer_idx,
@@ -634,6 +633,7 @@ def alt_inc_tree(
 
         fat_part.add_child(tag=sub_rect_idx, id=idx, shape=rect_shape[::-1])
         sub_rect_idx += 1
+        main_rect_idx += 1
 
         if i == diagonal_num - 2:
             fat_part.add_child(
