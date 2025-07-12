@@ -354,3 +354,9 @@ def rank_analysis(tree: hasvd_Node, ranks):
         print("Median:", median_rank)
         print("Std var:", stdv_rank)
         print("Mode:", mode_rank)
+
+
+def leaf_rank_analysis(tree: hasvd_Node, ranks):
+    leaves_rank = [ranks[node] for node in tree.traverse() if node.is_leaf]
+
+    return np.mean(leaves_rank)
