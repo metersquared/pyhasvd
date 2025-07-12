@@ -65,15 +65,15 @@ def random_matrix(
 # Sequence generators
 
 
-def lrf_sequence(rank, length, rng: np.random.Generator):
+def lrf_sequence(rank, length, rng: np.random.Generator, dtype=np.float64):
 
     # Convert roots to polynomial coefficients
-    coeffs = rng.standard_normal(rank)
+    coeffs = rng.standard_normal(rank, dtype=dtype)
     coeffs /= np.linalg.norm(coeffs)
 
     # Random initial values (normalized)
-    a = np.zeros(length)
-    a[:rank] = rng.standard_normal(rank)
+    a = np.zeros(length, dtype=dtype)
+    a[:rank] = rng.standard_normal(rank, dtype=dtype)
     # a[:rank] /= np.linalg.norm(a[:rank])
 
     for i in range(rank, length):

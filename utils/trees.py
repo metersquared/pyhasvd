@@ -1004,7 +1004,9 @@ def draw_nxgraph(root: hasvd_Node, node_size=1000):
 # Rank plots
 
 
-def plot_rank_graph(root: hasvd_Node, node_rank_map, cmap="RdYlGn_r"):
+def plot_rank_graph(
+    root: hasvd_Node, node_rank_map, cmap="RdYlGn_r", bound=(None, None)
+):
     G = nx.DiGraph()
     color_vals = []
 
@@ -1027,10 +1029,20 @@ def plot_rank_graph(root: hasvd_Node, node_rank_map, cmap="RdYlGn_r"):
     # Create figure and axis manually
     fig, ax = plt.subplots(figsize=(10, 6))
 
+    if bound == (None, None):
+        vmin, vmax = min(color_vals), max(color_vals)
+    else:
+        vmin, vmax = bound
+
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    cmap_obj = plt.get_cmap(cmap)
+
     # Draw nodes and edges
-    nx.draw_networkx_nodes(
-        G, pos, node_color=color_vals, cmap=plt.get_cmap(cmap), ax=ax, node_size=1000
-    )
+    # Map color values manually to RGBA colors
+    node_colors = [cmap_obj(norm(val)) for val in color_vals]
+
+    # Draw nodes with manually mapped colors
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors, ax=ax, node_size=1000)
     nx.draw_networkx_edges(G, pos, ax=ax)
 
     for node, (x, y) in pos.items():
@@ -1051,9 +1063,9 @@ def plot_rank_graph(root: hasvd_Node, node_rank_map, cmap="RdYlGn_r"):
         )
 
     # Add colorbar manually with mappable
-    sm = ScalarMappable(
-        norm=Normalize(vmin=min(color_vals), vmax=max(color_vals)), cmap=cmap
-    )
+
+    sm = ScalarMappable(norm=norm, cmap=cmap_obj)
+
     sm.set_array([])  # Required for matplotlib >= 3.1
     cbar = fig.colorbar(sm, ax=ax)
     cbar.set_label("Truncated Rank")
